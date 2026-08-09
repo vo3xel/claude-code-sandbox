@@ -1,6 +1,6 @@
 # claude-code-sandbox
 
-[![CI](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml)
+[![CI](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml)
 
 A dev container template for running [Claude Code](https://claude.com/claude-code)
 on macOS — sandboxed by default, with your login surviving rebuilds.
