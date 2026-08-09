@@ -6,7 +6,7 @@
 // Dockerfile and init-firewall.sh alongside this file, and "The sandbox"
 // section of the README for what that does and does not cover.
 {
-  "name": "mac-dev-container-test",
+  "name": "claude-code-sandbox",
 
   // Built from the Dockerfile next to this file: Ubuntu, plus the firewall
   // tooling and the sudo lockdown the sandbox depends on. The base image has

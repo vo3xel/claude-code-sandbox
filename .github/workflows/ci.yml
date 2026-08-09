@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # The allowlist is built from live DNS and GitHub's published ranges, so this
+  # can break without anyone touching the repo. Catch it on a schedule too.
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Shell syntax
+        run: |
+          bash -n .devcontainer/init-firewall.sh
+          bash -n .devcontainer/fix-claude-perms.sh
+
+      - name: Scripts are executable
+        run: |
+          test -x .devcontainer/init-firewall.sh
+          test -x .devcontainer/fix-claude-perms.sh
+
+      - name: Config parses
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+
+          raw = open(".devcontainer/devcontainer.json").read()
+          stripped = re.sub(r"^\s*//.*$", "", raw, flags=re.M)
+          cfg = json.loads(stripped)
+          json.load(open(".devcontainer/devcontainer-lock.json"))
+
+          # The firewall script is installed under a non-obvious name so the
+          # claude-code feature cannot overwrite it. Three places have to agree;
+          # a rename that misses one is silent until the sandbox is already gone.
+          path = "/usr/local/bin/init-firewall-local.sh"
+          dockerfile = open(".devcontainer/Dockerfile").read()
+          assert cfg["postStartCommand"] == f"sudo {path}", cfg["postStartCommand"]
+          assert f"COPY init-firewall.sh {path}" in dockerfile
+          assert f"NOPASSWD: {path}," in dockerfile
+          print("ok: init-firewall-local.sh path consistent in all three places")
+          PY
+
+  devcontainer:
+    name: Build and verify sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Builds the image, runs postCreateCommand and postStartCommand, and only
+      # then executes runCmd. The firewall verifies itself during postStart and
+      # fails closed, so reaching runCmd at all already proves a lot.
+      - uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            set -uo pipefail
+            fail=0
+            check() {
+              if eval "$2" >/dev/null 2>&1; then
+                echo "ok:   $1"
+              else
+                echo "FAIL: $1"
+                fail=1
+              fi
+            }
+
+            # Sudo is narrowed to exactly the two scripts.
+            check "sudo grants the firewall script" \
+              "sudo -n -l | grep -q init-firewall-local.sh"
+            check "sudo grants the perms script" \
+              "sudo -n -l | grep -q fix-claude-perms.sh"
+            check "sudo denies everything else" \
+              "! sudo -n true"
+
+            # The privileged scripts must not be writable by this user, or the
+            # sudo grant is a one-line path to root.
+            check "firewall script is immutable to vscode" \
+              "! touch /usr/local/bin/init-firewall-local.sh"
+
+            # Regression test for the rename: the claude-code feature installs
+            # its own init-firewall.sh over ours if the name collides. Assert
+            # the script sudo can run is still the one from this repo.
+            check "our firewall script survived the feature build" \
+              "grep -q 'Denying IPv6' /usr/local/bin/init-firewall-local.sh"
+
+            # Egress, both directions.
+            check "example.com is blocked" \
+              "! curl --connect-timeout 5 -sf https://example.com"
+            check "api.github.com is allowed" \
+              "curl --connect-timeout 5 -sf https://api.github.com/zen"
+            check "registry.npmjs.org is allowed" \
+              "curl --connect-timeout 5 -sf https://registry.npmjs.org"
+
+            # No blanket outbound SSH; GitHub works by address, not by port.
+            check "ssh to a non-allowlisted host is refused" \
+              "! timeout 10 ssh -o BatchMode=yes -o ConnectTimeout=5 -T git@gitlab.com"
+
+            # The config volume has to be writable or logins silently drop.
+            check "claude config dir is writable" \
+              "test -w \"\$CLAUDE_CONFIG_DIR\""
+
+            # Idempotent by design: re-running re-resolves and re-verifies.
+            check "firewall can be re-applied" \
+              "sudo -n /usr/local/bin/init-firewall-local.sh"
+
+            exit $fail

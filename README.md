@@ -1,4 +1,6 @@
-# mac-dev-container-test
+# claude-code-sandbox
+
+[![CI](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/vo3xel/claude-code-sandbox/actions/workflows/ci.yml)
 
 A dev container template for running [Claude Code](https://claude.com/claude-code)
 on macOS — sandboxed by default, with your login surviving rebuilds.
@@ -10,8 +12,9 @@ actually needs.
 
 ## Requirements
 
-- Docker. Built and tested against [OrbStack](https://orbstack.dev), but Docker
-  Desktop works the same way.
+- Docker. Built and tested against [OrbStack](https://orbstack.dev). Docker
+  Desktop should work unchanged, but is untested — see
+  [Checking it yourself](#checking-it-yourself).
 - VS Code with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
   extension, or the [`devcontainer` CLI](https://github.com/devcontainers/cli).
 
@@ -150,6 +153,17 @@ GitHub's SSH daemon and only the key was missing, which is the address-matched
 allowlist working. And blocked hosts fail with curl exit 7 in well under a
 second; if something hangs instead, the rules are not what you think.
 
+**On Docker Desktop, watch the first start.** This template is developed on
+OrbStack, whose resolver is a plain address, so
+[`init-firewall.sh`](.devcontainer/init-firewall.sh) always logs `No Docker DNS
+rules to restore` here. Docker Desktop uses `127.0.0.11`, which takes the other
+branch: the script saves Docker's embedded-DNS NAT rules before flushing and
+replays them afterwards. That path is inherited from the upstream Anthropic
+script and is widely used, but it is not exercised in development. Because the
+firewall fails closed, a problem there shows up as a container that refuses to
+start rather than as broken name resolution. If that happens, the container log
+is the whole story. Reports welcome.
+
 ### Adding to the allowlist
 
 Edit `ALLOWED_DOMAINS` at the top of
@@ -209,23 +223,28 @@ sudo. Rebuild.
 The sandbox is only half of it; the other half is habits. These are the ones
 that actually matter here, roughly in order of how much they buy you.
 
-**Let the agent off the leash — that is what the container is for.** Run
-`claude --dangerously-skip-permissions` and stop approving individual tool
-calls. The whole point of the sudo lockdown and the default-deny egress is to
-move the boundary from "did I read that prompt carefully" to "what can this
-process actually reach," which is a boundary that does not get tired. Approving
-edits one at a time inside a sandbox is the worst of both: still interruptible,
-no more contained.
+**Narrow your GitHub credentials first.** This is the one thing the firewall
+cannot help with, so it comes before everything else. Your host's git auth is
+reachable from inside over a Unix socket, and all of GitHub is allowed egress,
+so out of the box the blast radius is every repo your account can write to.
+Sign in with a fine-grained personal access token scoped to the repos you are
+actually working on, and the coarse allowlist stops mattering nearly as much.
+If you would rather cut it off entirely, `git config --global --unset
+credential.helper` and put a token in the remote URL — but note the helper is
+also set in `/etc/gitconfig`, so it comes back on rebuild.
 
-**Narrow your GitHub credentials before you do.** This is the one thing the
-firewall cannot help with. Your host's git auth is reachable over a Unix
-socket, and all of GitHub is allowed egress, so the default blast radius is
-every repo your account can write to. Sign in with a fine-grained personal
-access token scoped to the repos you are actually working on, and the coarse
-allowlist stops mattering nearly as much. If you would rather cut it off
-entirely, `git config --global --unset credential.helper` and use a token in
-the remote URL — but note the helper is also set in `/etc/gitconfig`, so it
-comes back on rebuild.
+**Then let the agent off the leash — that is what the container is for.** Run
+`claude --dangerously-skip-permissions` and stop approving individual tool
+calls. The point of the sudo lockdown and the default-deny egress is to move
+the boundary from "did I read that prompt carefully" to "what can this process
+actually reach," which is a boundary that does not get tired. Approving edits
+one at a time inside a sandbox is the worst of both: still interruptible, no
+more contained.
+
+That argument depends on the container. The flag is reasonable *here* because
+egress is allowlisted, root is unreachable, and — if you did the previous step
+— your credentials are scoped. Lifting the flag out of this setup and into a
+normal shell keeps none of that.
 
 **Push often; the remote is your real undo.** The workspace is mounted
 read-write and the agent can rewrite git history, so a local commit is not a
