@@ -1,0 +1,65 @@
+# macOS — the host this container is meant to run on
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+
+# Editors / IDEs
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code — per-machine local state. .claude/settings.json and
+# .claude/agents, skills, commands are shareable and stay tracked;
+# settings.local.json and session data are not.
+.claude/settings.local.json
+.claude/local/
+.claude/shell-snapshots/
+.claude/todos/
+.claude/statsig/
+CLAUDE.local.md
+
+# Secrets and local environment. .env.example is meant to be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Dev container local overrides. devcontainer-lock.json IS tracked — it
+# pins the feature versions that make a rebuild reproducible.
+.devcontainer/devcontainer.local.json
+.devcontainer/.env
+
+# Logs and process files
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Dependencies / build output — trim to whatever stack this repo grows into
+node_modules/
+dist/
+build/
+.cache/
+coverage/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Temp
+tmp/
+*.tmp

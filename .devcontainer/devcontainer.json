@@ -1,0 +1,113 @@
+// .devcontainer/devcontainer.json
+// Sandboxed dev container with Claude Code, for OrbStack on macOS.
+//
+// "Sandboxed" here means: default-deny outbound network with an explicit
+// allowlist, and a user that cannot escalate to root to undo it. See the
+// Dockerfile and init-firewall.sh alongside this file, and "The sandbox"
+// section of the README for what that does and does not cover.
+{
+  "name": "mac-dev-container-test",
+
+  // Built from the Dockerfile next to this file: Ubuntu, plus the firewall
+  // tooling and the sudo lockdown the sandbox depends on. The base image has
+  // an arm64 variant, so this runs natively on Apple Silicon. Point the
+  // Dockerfile's FROM at your project's image to change stacks.
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  // Required for init-firewall.sh to manage iptables/ipset. NET_ADMIN inside
+  // the container is not a route back to the host, and the vscode user cannot
+  // use it — only root can, and nothing here can become root.
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
+  ],
+
+  "features": {
+    // Node is what the Claude Code CLI runs on. The Claude Code feature
+    // installs Node itself when the base image lacks it, but declaring it
+    // explicitly avoids a "Failed to install Node.js and npm" build failure.
+    "ghcr.io/devcontainers/features/node:1": {},
+
+    // Installs the latest Claude Code CLI, plus the VS Code extension when
+    // opened in VS Code or Codespaces. The :1.0 tag pins this install
+    // script, not the Claude Code release.
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
+
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+
+    // Add whatever else the stack needs later, e.g.:
+    // "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
+    // "ghcr.io/devcontainers/features/go:1": {}
+  },
+
+  // Non-root, and — unlike a stock dev container — genuinely unable to
+  // become root: the Dockerfile narrows this user's sudo to the two scripts
+  // in /usr/local/bin. That is what makes --dangerously-skip-permissions
+  // defensible here. "vscode" is the user in the base image; others use
+  // "node". If you change images, keep this, the sudoers rule in the
+  // Dockerfile, the path in fix-claude-perms.sh, and the two home directory
+  // paths below all in sync.
+  "remoteUser": "vscode",
+
+  // Keeps your Claude Code login, settings, and session history across
+  // container rebuilds. ${devcontainerId} scopes the volume to this project;
+  // drop it to share one login across all your repos.
+  "mounts": [
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
+
+  "containerEnv": {
+    // Must match the mount target above. Claude Code keeps your OAuth
+    // account and per-project trust in ~/.claude.json, which sits OUTSIDE
+    // the .claude directory — this variable moves it inside the volume so
+    // you stay signed in after a rebuild. Both halves are needed.
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+
+    // Optional policy knobs:
+    // "DISABLE_AUTOUPDATER": "1",
+    // "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+
+  // The Claude Code feature adds its own VS Code extension automatically;
+  // list only yours here.
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "eamodio.gitlens",
+        "editorconfig.editorconfig"
+      ]
+    }
+  },
+
+  // Uncomment and set once the project actually serves something.
+  // OrbStack exposes forwarded ports on localhost.
+  // "forwardPorts": [3000],
+
+  // Docker creates the .claude volume above as root:root, and it's mounted
+  // over the home directory, so the vscode user can't write credentials or
+  // transcripts into it — logins appear to succeed and then drop. This fixes
+  // the ownership on every container create. It is a fixed script rather than
+  // an inline chown because this user's sudo no longer covers arbitrary
+  // commands. Append your own setup steps after it with &&, e.g.
+  // "npm install" or "pip install -r requirements.txt".
+  "postCreateCommand": "sudo /usr/local/bin/fix-claude-perms.sh",
+
+  // The firewall lives in the network namespace, not the filesystem, so it
+  // has to be reapplied on every start — not just on create. It fails closed:
+  // if the allowlist cannot be built, this command exits non-zero and the
+  // container start is reported as failed rather than coming up unprotected.
+  // Runs OUR script (init-firewall-local.sh), not the feature's. The
+  // claude-code feature installs its own upstream init-firewall.sh at
+  // /usr/local/bin/init-firewall.sh; sudoers only allows this one.
+  "postStartCommand": "sudo /usr/local/bin/init-firewall-local.sh",
+
+  // Do not attach until the firewall is up, so nothing gets a window of
+  // unrestricted network before the rules land.
+  "waitFor": "postStartCommand",
+
+  "remoteEnv": {
+    "TZ": "${localEnv:TZ}"
+  }
+}
