@@ -38,9 +38,14 @@ below.
 
 | Feature | Why |
 | --- | --- |
-| `ghcr.io/devcontainers/features/node` | What the Claude Code CLI runs on |
 | `ghcr.io/anthropics/devcontainer-features/claude-code` | The CLI, plus the VS Code extension |
 | `ghcr.io/devcontainers/features/github-cli` | `gh`, for PRs and issues |
+
+Node — what the CLI runs on — is installed in the Dockerfile rather than via
+`ghcr.io/devcontainers/features/node`, because that feature also installs the
+ESLint VS Code extension and a feature's extensions cannot be declined. The
+Claude Code extension is the only one in the container; keeping it that way
+means checking what a feature contributes before adding it.
 
 | File | Role |
 | --- | --- |
@@ -95,12 +100,15 @@ to run an agent in it unsupervised.
 sets `iptables` policy to `DROP` and permits only an explicit allowlist:
 GitHub's published IP ranges, the Anthropic API and login endpoints, Claude
 Code's telemetry hosts, the npm registry, and the VS Code marketplace, blob,
-and update hosts. Everything else is rejected — and rejected rather than
+update, and extension-asset hosts. Everything else is rejected — and rejected rather than
 dropped, so blocked calls fail immediately instead of hanging for a minute.
 
 **IPv6 is denied outright, and there is no SSH hole.** No allowlist is
 maintained for v6, and an unfiltered v6 path would route straight around
-everything above, so all three v6 chains are set to `DROP`. The reference
+everything above, so all three v6 chains are set to `DROP`, with an explicit
+`REJECT` on output so a v6 attempt fails immediately rather than hanging —
+allowlisted hosts publish AAAA records too, and a client that tries v6 first
+should fall back to v4 at once instead of waiting out a timeout. The reference
 script this is adapted from also allows outbound TCP/22 to anywhere so that
 git-over-SSH works; that is a shell to any host on the internet, so it is gone.
 GitHub is matched by address rather than port, so `git+ssh` to GitHub still
@@ -172,6 +180,12 @@ for PyPI and the Go module proxy are already there — then rebuild. A name that
 does not resolve is logged as a warning and skipped rather than aborting the
 start; the effect is that the tool needing it stays blocked, never that the
 sandbox opens up.
+
+Adding a VS Code extension takes two entries, not one:
+`<publisher>.gallerycdn.vsassets.io` and `<publisher>.gallery.vsassets.io`.
+Those hosts are per-publisher, and `marketplace.visualstudio.com` alone is not
+enough — it serves the gallery API, not the `.vsix`. A missing pair shows up in
+the Dev Containers log as `EHOSTUNREACH` against a `vsassets.io` URL.
 
 ### What this does not protect against
 

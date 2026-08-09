@@ -9,8 +9,29 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu
 # because it fails closed, would be a container that refuses to start.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        iptables ipset dnsutils aggregate jq ca-certificates \
+        iptables ipset dnsutils aggregate jq ca-certificates curl gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Node, which the Claude Code CLI runs on. Installed here rather than via
+# ghcr.io/devcontainers/features/node because that feature also contributes
+# the ESLint VS Code extension, and there is no way to decline a feature's
+# extensions — the only way to not get it is to not use the feature. The
+# claude-code feature checks for node/npm on PATH and skips its own Node
+# install when both are present, so this satisfies it.
+#
+# From NodeSource rather than Ubuntu's split nodejs/npm packages, which lag
+# and package npm awkwardly for global installs. Bump node_22.x to move
+# major versions. Build-time only, so the egress allowlist does not apply.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && chmod a+r /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
 
 # The two privileged scripts are baked into the image, root-owned and not
 # writable by anyone else. This is load-bearing: they are the only commands

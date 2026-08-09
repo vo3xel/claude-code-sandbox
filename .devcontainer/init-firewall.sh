@@ -35,6 +35,15 @@ ALLOWED_DOMAINS=(
     "vscode.blob.core.windows.net"
     "update.code.visualstudio.com"
 
+    # Extension manifests and .vsix payloads. marketplace.visualstudio.com is
+    # only the gallery API; the actual bytes come from two per-publisher
+    # hosts, and VS Code tries the CDN one FIRST. Both are needed, and both
+    # are per-publisher — installing an extension from another publisher
+    # means adding its two names here. Without them the install fails with
+    # EHOSTUNREACH, retries, and eventually limps through on a fallback.
+    "anthropic.gallerycdn.vsassets.io"
+    "anthropic.gallery.vsassets.io"
+
     # Add what your stack needs, e.g.:
     # "pypi.org"
     # "files.pythonhosted.org"
@@ -231,6 +240,14 @@ if ip6tables -L >/dev/null 2>&1; then
     ip6tables -P OUTPUT DROP
     ip6tables -A INPUT -i lo -j ACCEPT
     ip6tables -A OUTPUT -o lo -j ACCEPT
+
+    # Same reasoning as the v4 REJECT above, and it matters more here. Every
+    # marketplace host publishes AAAA records, so Node's happy-eyeballs tries
+    # v6 first on each one. Against a silent DROP that attempt hangs until a
+    # timeout before v4 is tried; against a REJECT it fails immediately and
+    # the v4 path is used at once. The policy stays DROP as a backstop for
+    # anything this rule does not cover.
+    ip6tables -A OUTPUT -j REJECT --reject-with icmp6-adm-prohibited
 else
     echo "ip6tables unavailable; assuming no IPv6 stack"
 fi

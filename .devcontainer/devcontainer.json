@@ -25,10 +25,10 @@
   ],
 
   "features": {
-    // Node is what the Claude Code CLI runs on. The Claude Code feature
-    // installs Node itself when the base image lacks it, but declaring it
-    // explicitly avoids a "Failed to install Node.js and npm" build failure.
-    "ghcr.io/devcontainers/features/node:1": {},
+    // Node is NOT a feature here — it is installed in the Dockerfile. The
+    // node feature also contributes the ESLint VS Code extension, and a
+    // feature's extensions cannot be declined, so using it would put a
+    // second extension in the container. See the Dockerfile.
 
     // Installs the latest Claude Code CLI, plus the VS Code extension when
     // opened in VS Code or Codespaces. The :1.0 tag pins this install
@@ -40,6 +40,10 @@
     // Add whatever else the stack needs later, e.g.:
     // "ghcr.io/devcontainers/features/python:1": { "version": "3.12" },
     // "ghcr.io/devcontainers/features/go:1": {}
+    //
+    // Check what a feature contributes before adding it: several ship VS Code
+    // extensions of their own, which land in the container whether or not
+    // they are listed under "customizations" below.
   },
 
   // Non-root, and — unlike a stock dev container — genuinely unable to
@@ -70,14 +74,12 @@
     // "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
   },
 
-  // The Claude Code feature adds its own VS Code extension automatically;
-  // list only yours here.
+  // The Claude Code feature adds its own VS Code extension automatically, so
+  // this list is empty on purpose — that extension is the only one installed.
+  // Add yours here, e.g. "eamodio.gitlens".
   "customizations": {
     "vscode": {
-      "extensions": [
-        "eamodio.gitlens",
-        "editorconfig.editorconfig"
-      ],
+      "extensions": [],
       "settings": {
         // The telemetry collector (mobile.events.data.microsoft.com) is not
         // on the egress allowlist, and VS Code retries it forever — this
