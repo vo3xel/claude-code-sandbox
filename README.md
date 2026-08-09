@@ -168,6 +168,13 @@ Be clear-eyed about the boundary:
   determined process can still encode data into hostnames it looks up.
 - **The allowlist is coarse.** GitHub's ranges mean *all* of GitHub, so a
   push to an attacker's repo is permitted traffic. Same for any npm package.
+- **Your host's git credentials reach inside, and the firewall cannot see
+  them.** The Dev Containers extension writes a credential helper into
+  `/etc/gitconfig` that proxies to macOS over a Unix socket
+  (`REMOTE_CONTAINERS_IPC`), not the network. `gh auth status` will say you are
+  logged out while `git push` works anyway. Combined with the previous point,
+  anything in the container can push to any repo your host account can write
+  to. This is the sharpest edge in the whole setup — see below.
 - **Your workspace is mounted read-write.** Anything in the container can
   modify your project files, including its own git history.
 - **The local Docker subnet is wide open.** The host's `/24` is allowed in
@@ -196,6 +203,65 @@ If you want the plain, unrestricted container: drop `runArgs`,
 [`devcontainer.json`](.devcontainer/devcontainer.json), and delete the final
 `RUN` block in the [`Dockerfile`](.devcontainer/Dockerfile) to restore blanket
 sudo. Rebuild.
+
+## Working in it
+
+The sandbox is only half of it; the other half is habits. These are the ones
+that actually matter here, roughly in order of how much they buy you.
+
+**Let the agent off the leash — that is what the container is for.** Run
+`claude --dangerously-skip-permissions` and stop approving individual tool
+calls. The whole point of the sudo lockdown and the default-deny egress is to
+move the boundary from "did I read that prompt carefully" to "what can this
+process actually reach," which is a boundary that does not get tired. Approving
+edits one at a time inside a sandbox is the worst of both: still interruptible,
+no more contained.
+
+**Narrow your GitHub credentials before you do.** This is the one thing the
+firewall cannot help with. Your host's git auth is reachable over a Unix
+socket, and all of GitHub is allowed egress, so the default blast radius is
+every repo your account can write to. Sign in with a fine-grained personal
+access token scoped to the repos you are actually working on, and the coarse
+allowlist stops mattering nearly as much. If you would rather cut it off
+entirely, `git config --global --unset credential.helper` and use a token in
+the remote URL — but note the helper is also set in `/etc/gitconfig`, so it
+comes back on rebuild.
+
+**Push often; the remote is your real undo.** The workspace is mounted
+read-write and the agent can rewrite git history, so a local commit is not a
+checkpoint it cannot reach. Anything already on the remote is. Work on a
+branch, push early, and a bad session costs you a `git reset --hard
+origin/<branch>` instead of an afternoon.
+
+**When something is blocked, find out what it wanted before you allow it.** A
+blocked call fails in well under a second — curl exit 7, or `Network is
+unreachable` — so it is obvious what happened, and the temptation is to paste
+the domain into `ALLOWED_DOMAINS` and move on. Every entry you add is permanent
+egress for *everything* in the container, not just the tool that asked. A
+package that suddenly needs an analytics endpoint is worth ten seconds of
+thought.
+
+**Re-run the firewall instead of rebuilding when things start failing
+mid-session.** Addresses are resolved once at start, so a CDN that rotates can
+break a working setup hours in. `sudo /usr/local/bin/init-firewall-local.sh`
+re-resolves the whole allowlist, re-verifies both directions, and exits 0 — it
+is idempotent and takes a couple of seconds, which beats a restart.
+
+**Install dependencies after you attach, not in `postCreateCommand`.** Create
+runs before the firewall exists. Anything you append there gets open network on
+first build, which is convenient right up until it is the thing you were trying
+to contain. Running `npm install` yourself once you have a shell puts it behind
+the allowlist.
+
+**Keep one container per project.** `${devcontainerId}` scopes the config
+volume, so a prompt injection in one repo cannot read another repo's session
+history or trust settings. Sharing a volume across repos is a real convenience
+and a real hole; know which one you are picking.
+
+**Trust the attach.** `waitFor` is set to `postStartCommand`, so if you got a
+shell, the firewall applied and passed its own two-way check. You do not need
+to verify by hand every morning — only after changing the firewall script,
+adding a feature, or anything else that touches the build.
 
 ## Reproducible rebuilds
 
