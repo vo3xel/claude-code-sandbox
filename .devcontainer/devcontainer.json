@@ -77,7 +77,14 @@
       "extensions": [
         "eamodio.gitlens",
         "editorconfig.editorconfig"
-      ]
+      ],
+      "settings": {
+        // The telemetry collector (mobile.events.data.microsoft.com) is not
+        // on the egress allowlist, and VS Code retries it forever — this
+        // silences the resulting EHOSTUNREACH noise in the container log
+        // rather than punching a hole for it.
+        "telemetry.telemetryLevel": "off"
+      }
     }
   },
 
